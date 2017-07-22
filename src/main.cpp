@@ -8,6 +8,7 @@
 #include "Eigen-3.3/Eigen/Core"
 #include "Eigen-3.3/Eigen/QR"
 #include "json.hpp"
+#include "PathPlanner.h"
 #include "spline.h"
 #include "vehicle.h"
 #include "road.h"
@@ -18,20 +19,10 @@ using namespace tk; // spline
 // for convenience
 using json = nlohmann::json;
 
-// PROJECT LIMIT CONSTANTS
-const double MAX_SPEED = 50.0; // mph/h
-const double MAX_ACCEL= 10.0; // m/s^2
-const double MAX_JERK = 10.0; // m/s^3
-
-// OTHER CONSTANTS
-const double SAFETY_DISTANCE = 50.0; // m
-
 // For converting back and forth between radians and degrees.
 constexpr double pi() { return M_PI; }
 double deg2rad(double x) { return x * pi() / 180; }
 double rad2deg(double x) { return x * 180 / pi(); }
-double mph2ms(double v) { return v * (1600.0/3600.0); }
-double ms2mph(double v) { return v * (3600.0/1600.0); }
 
 // Checks if the SocketIO event has JSON data.
 // If there is data the JSON object in string format will be returned,
@@ -242,9 +233,9 @@ int main() {
   wp_spline_dy.set_points(map_waypoints_s, map_waypoints_dy);
 
   // PathPlanner instance
-  // PathPlanner pathPlanner;
+  PathPlanner pathPlanner;
 
-  h.onMessage([&map_waypoints_x,&map_waypoints_y,&map_waypoints_s,&map_waypoints_dx,&map_waypoints_dy,&wp_spline_x,&wp_spline_y,&wp_spline_dx,&wp_spline_dy](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
+  h.onMessage([&map_waypoints_x,&map_waypoints_y,&map_waypoints_s,&map_waypoints_dx,&map_waypoints_dy,&pathPlanner,&wp_spline_x,&wp_spline_y,&wp_spline_dx,&wp_spline_dy](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
                      uWS::OpCode opCode) {
     // "42" at the start of the message means there's a websocket message event.
     // The 4 signifies a websocket message
@@ -372,8 +363,12 @@ int main() {
               angle = atan2(pos_y-pos_y2,pos_x-pos_x2);
             }
 
+            int next_waypoint = NextWaypoint(car_x, car_y, car_yaw, map_waypoints_x, map_waypoints_y);
+            vector<double> start;
+            vector<double> end;
+            vector<double> trajectory;
+
             double wp_x, wp_y, wp_dx, wp_dy;
-            double dist_inc = 0.4;
             for(int i = 0; i < 50-path_size; i++) {
 
               /* TESTING LINE */
@@ -389,7 +384,16 @@ int main() {
               // next_y_vals.push_back(pos_y);
 
               /* SAME LANE */
-              pos_s += dist_inc;
+              pos_s += pathPlanner.s_inc;
+
+              // start = {car_s, car_speed, 0};
+              // end = {pos_s + pathPlanner.s_inc, car_speed, 0};
+              //
+              // trajectory = pathPlanner.JMT(start, end, 0.020);
+              // double next_s = car_s;
+              // for (int a = 0; a < trajectory.size(); ++a) {
+              //   pos_s += pow(trajectory[a], a) * (0.1 * i);
+              // }
 
               // spline interpolation
               wp_x = wp_spline_x(pos_s);
@@ -397,9 +401,8 @@ int main() {
               wp_dx = wp_spline_dx(pos_s);
               wp_dy = wp_spline_dy(pos_s);
 
-              // center lane -> d = 6
-              pos_x = wp_x + 6 * wp_dx;
-              pos_y = wp_y + 6 * wp_dy;
+              pos_x = wp_x + wp_dx * pathPlanner.d;
+              pos_y = wp_y + wp_dy * pathPlanner.d;
 
               next_x_vals.push_back(pos_x);
               next_y_vals.push_back(pos_y);
