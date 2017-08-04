@@ -5,24 +5,20 @@
 #include <iostream>
 #include <thread>
 #include <vector>
-#include "Eigen-3.3/Eigen/Core"
-#include "Eigen-3.3/Eigen/QR"
+#include <math.h>
+
 #include "json.hpp"
-#include "PathPlanner.h"
+
 #include "spline.h"
 #include "vehicle.h"
 #include "road.h"
+#include "planner.h"
 
 using namespace std;
 using namespace tk; // spline
 
 // for convenience
 using json = nlohmann::json;
-
-// For converting back and forth between radians and degrees.
-constexpr double pi() { return M_PI; }
-double deg2rad(double x) { return x * pi() / 180; }
-double rad2deg(double x) { return x * 180 / pi(); }
 
 // Checks if the SocketIO event has JSON data.
 // If there is data the JSON object in string format will be returned,
@@ -39,148 +35,6 @@ string hasData(string s) {
   return "";
 }
 
-double distance(double x1, double y1, double x2, double y2)
-{
-  return sqrt((x2-x1)*(x2-x1)+(y2-y1)*(y2-y1));
-}
-int ClosestWaypoint(double x, double y, vector<double> maps_x, vector<double> maps_y)
-{
-
-  double closestLen = 100000; //large number
-  int closestWaypoint = 0;
-
-  for(int i = 0; i < maps_x.size(); i++)
-  {
-    double map_x = maps_x[i];
-    double map_y = maps_y[i];
-    double dist = distance(x,y,map_x,map_y);
-    if(dist < closestLen)
-    {
-      closestLen = dist;
-      closestWaypoint = i;
-    }
-
-  }
-
-  return closestWaypoint;
-
-}
-
-int NextWaypoint(double x, double y, double theta, vector<double> maps_x, vector<double> maps_y)
-{
-
-  int closestWaypoint = ClosestWaypoint(x,y,maps_x,maps_y);
-
-  double map_x = maps_x[closestWaypoint];
-  double map_y = maps_y[closestWaypoint];
-
-  double heading = atan2( (map_y-y),(map_x-x) );
-
-  double angle = abs(theta-heading);
-
-  if(angle > pi()/4)
-  {
-    closestWaypoint++;
-  }
-
-  return closestWaypoint;
-
-}
-
-// Transform from Cartesian x,y coordinates to Frenet s,d coordinates
-vector<double> getFrenet(double x, double y, double theta, vector<double> maps_x, vector<double> maps_y)
-{
-  int next_wp = NextWaypoint(x,y, theta, maps_x,maps_y);
-
-  int prev_wp;
-  prev_wp = next_wp-1;
-  if(next_wp == 0)
-  {
-    prev_wp  = maps_x.size()-1;
-  }
-
-  double n_x = maps_x[next_wp]-maps_x[prev_wp];
-  double n_y = maps_y[next_wp]-maps_y[prev_wp];
-  double x_x = x - maps_x[prev_wp];
-  double x_y = y - maps_y[prev_wp];
-
-  // find the projection of x onto n
-  double proj_norm = (x_x*n_x+x_y*n_y)/(n_x*n_x+n_y*n_y);
-  double proj_x = proj_norm*n_x;
-  double proj_y = proj_norm*n_y;
-
-  double frenet_d = distance(x_x,x_y,proj_x,proj_y);
-
-  //see if d value is positive or negative by comparing it to a center point
-
-  double center_x = 1000-maps_x[prev_wp];
-  double center_y = 2000-maps_y[prev_wp];
-  double centerToPos = distance(center_x,center_y,x_x,x_y);
-  double centerToRef = distance(center_x,center_y,proj_x,proj_y);
-
-  if(centerToPos <= centerToRef)
-  {
-    frenet_d *= -1;
-  }
-
-  // calculate s value
-  double frenet_s = 0;
-  for(int i = 0; i < prev_wp; i++)
-  {
-    frenet_s += distance(maps_x[i],maps_y[i],maps_x[i+1],maps_y[i+1]);
-  }
-
-  frenet_s += distance(0,0,proj_x,proj_y);
-
-  return {frenet_s,frenet_d};
-
-}
-
-// Transform from Frenet s,d coordinates to Cartesian x,y
-vector<double> getXY(double s, double d, vector<double> maps_s, vector<double> maps_x, vector<double> maps_y)
-{
-  int prev_wp = -1;
-
-  while(s > maps_s[prev_wp+1] && (prev_wp < (int)(maps_s.size()-1) ))
-  {
-    prev_wp++;
-  }
-
-  int wp2 = (prev_wp+1)%maps_x.size();
-
-  double heading = atan2((maps_y[wp2]-maps_y[prev_wp]),(maps_x[wp2]-maps_x[prev_wp]));
-  // the x,y,s along the segment
-  double seg_s = (s-maps_s[prev_wp]);
-
-  double seg_x = maps_x[prev_wp]+seg_s*cos(heading);
-  double seg_y = maps_y[prev_wp]+seg_s*sin(heading);
-
-  double perp_heading = heading-pi()/2;
-
-  double x = seg_x + d*cos(perp_heading);
-  double y = seg_y + d*sin(perp_heading);
-
-  return {x,y};
-
-}
-
-/* Helpers */
-enum LANE { LEFT, CENTER, RIGHT };
-LANE getLane(double d) {
-  LANE lane;
-  if (d < 4.0) {
-    lane = LEFT;
-  }
-  else if ((d >= 4.0) && (d < 8.0)) {
-    lane = CENTER;
-  }
-  else {
-    lane = RIGHT;
-  }
-  return lane;
-}
-
-
 /* Main */
 
 int main() {
@@ -195,8 +49,6 @@ int main() {
 
   // Waypoint map to read from
   string map_file_ = "../data/highway_map.csv";
-  // The max s value before wrapping around the track back to 0
-  double max_s = 6945.554;
 
   ifstream in_map_(map_file_.c_str(), ifstream::in);
 
@@ -232,10 +84,25 @@ int main() {
   wp_spline_dx.set_points(map_waypoints_s, map_waypoints_dx);
   wp_spline_dy.set_points(map_waypoints_s, map_waypoints_dy);
 
-  // PathPlanner instance
-  PathPlanner pathPlanner;
 
-  h.onMessage([&map_waypoints_x,&map_waypoints_y,&map_waypoints_s,&map_waypoints_dx,&map_waypoints_dy,&pathPlanner,&wp_spline_x,&wp_spline_y,&wp_spline_dx,&wp_spline_dy](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
+  // The max s value before wrapping around the track back to 0
+  int event_counter = 0;
+  double max_s = 6945.554;
+
+  // Road & Vehicle & Planner instances
+  Road road;
+  Vehicle car;
+  Planner planner;
+
+  h.onMessage([
+    &road,
+    &car,
+    &planner,
+    &wp_spline_x,
+    &wp_spline_y,
+    &wp_spline_dx,
+    &wp_spline_dy,
+    &event_counter](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
                      uWS::OpCode opCode) {
     // "42" at the start of the message means there's a websocket message event.
     // The 4 signifies a websocket message
@@ -253,170 +120,197 @@ int main() {
 
         if (event == "telemetry") {
           // j[1] is the data JSON object
+          event_counter++;
+          cout << "EVENT: " << event_counter << endl;
 
           // Main car's localization Data
-            double car_x = j[1]["x"];
-            double car_y = j[1]["y"];
-            double car_s = j[1]["s"];
-            double car_d = j[1]["d"];
-            double car_yaw = j[1]["yaw"];
-            double car_speed = j[1]["speed"];
+          double car_x = j[1]["x"];
+          double car_y = j[1]["y"];
+          double car_s = j[1]["s"];
+          double car_d = j[1]["d"];
+          double car_yaw = j[1]["yaw"];
+          double car_speed = j[1]["speed"];
 
-            // Previous path data given to the Planner
-            auto previous_path_x = j[1]["previous_path_x"];
-            auto previous_path_y = j[1]["previous_path_y"];
-            // Previous path's end s and d values
-            double end_path_s = j[1]["end_path_s"];
-            double end_path_d = j[1]["end_path_d"];
+          // Previous path data given to the Planner
+          auto previous_path_x = j[1]["previous_path_x"];
+          auto previous_path_y = j[1]["previous_path_y"];
+          // Previous path's end s and d values
+          double end_path_s = j[1]["end_path_s"];
+          double end_path_d = j[1]["end_path_d"];
 
-            // Sensor Fusion Data, a list of all other cars on the same side of the road.
-            auto sensor_fusion = j[1]["sensor_fusion"];
+          // Sensor Fusion Data, a list of all other cars on the same side of the road.
+          auto sensor_fusion = j[1]["sensor_fusion"];
 
-            json msgJson;
+          json msgJson;
 
-            vector<double> next_x_vals;
-            vector<double> next_y_vals;
+          vector<double> next_x_vals;
+          vector<double> next_y_vals;
 
-            /* CORE */
+          /*****************
+          ******CONTEXT*****
+          *****************/
 
-            /*****************
-            ******CONTEXT*****
-            *****************/
+          cout << "-------------CAR--------------" << endl;
+          cout << "Car S: " << car_s << " " << "Car speed: " << car_speed << endl;
 
-            /* Step One: "Lane detection" -> Where am I? */
-            LANE lane = getLane(car_d);
+          car.update_vehicle_state(car_x, car_y, car_speed, car_s, car_d, car_yaw);
 
-            /* Step Two: Get SF info to create the Road -> Sensor Fusion Elements (Just cars) */
-            Road road;
-            for (int i = 0; i < sensor_fusion.size(); ++i) {
+          /* Step One: "Lane detection" -> Where am I? */
+          LANE lane = car.lane();
+          // cout << "Car Lane: " << lane << endl;
 
-              // It's called vehicle instead of car just to do not get wrong with our car variables.
-              auto sfv = sensor_fusion[i];
-              Vehicle vehicle (sfv[0], sfv[1], sfv[2], sfv[3], sfv[4], sfv[5], sfv[6]);
-              LANE vehicle_lane = getLane(vehicle.d);
+          vector<Vehicle> left_lane;
+          vector<Vehicle> center_lane;
+          vector<Vehicle> right_lane;
 
-              if (vehicle_lane == LEFT) {
-                road.left_lane.push_back(vehicle);
-              } else if (vehicle_lane == CENTER) {
-                road.center_lane.push_back(vehicle);
-              } else {
-                road.right_lane.push_back(vehicle);
+          /* Step Two: Get SF info to create the Road -> Sensor Fusion Elements (Just cars) */
+          for (int i = 0; i < sensor_fusion.size(); ++i) {
+            // It's called vehicle instead of car just to do not get wrong with our car variables.
+            int id = sensor_fusion[i][0];
+            double x = sensor_fusion[i][1];
+            double y = sensor_fusion[i][2];
+            double vx = sensor_fusion[i][3];
+            double vy = sensor_fusion[i][4];
+            double s = sensor_fusion[i][5];
+            double d = sensor_fusion[i][6];
+            double v = sqrt(vx*vx + vy*vy);
+
+            Vehicle vehicle (id, x, y, v, s, d);
+            LANE vehicle_lane = vehicle.lane();
+
+            if (vehicle_lane == LANE::LEFT) {
+              left_lane.push_back(vehicle);
+            } else if (vehicle_lane == LANE::CENTER) {
+              center_lane.push_back(vehicle);
+            } else {
+              right_lane.push_back(vehicle);
+            }
+          }
+          // Update road
+          road.update_road(left_lane, center_lane, right_lane);
+
+          /* Road Check */
+          //cout << "---------------ROAD---------------" << endl;
+          //cout << "Left: " << road.get_lane(LEFT).size() << " " << "Center: " << road.get_lane(CENTER).size() << " " << "Right: " << road.get_lane(CENTER).size() << endl;
+
+          /*****************
+          ******CORE*****
+          *****************/
+
+          // Previous path
+          int n = previous_path_x.size();
+          cout << n << endl;
+          for(int i = 0; i < n; i++) {
+            next_x_vals.push_back(previous_path_x[i]);
+            next_y_vals.push_back(previous_path_y[i]);
+          }
+
+          if (car.is_stopped()) {
+            // block
+            car.lock_start();
+
+            n = 50*4.5; // 0 to max speed? 50*5?
+            double T = n * AT;
+            double target_s = car.get_s() + 40.0;
+            double target_v = SPEED_LIMIT;
+
+            vector<double> start = {car.get_s(), car.get_v(), 0.0};
+            vector<double> end = {target_s, target_v, 0.0};
+            vector<double> poly = planner.JMT(start, end, T);
+
+            car.set_previous_s(end);
+
+            double t, next_s, mod_s, wp_x, wp_y, wp_dx, wp_dy, next_x, next_y;
+            for(int i = 0; i < n; i++) {
+
+              /* JMT */
+              cout << "----------JMT----------" << endl;
+              t = AT*i;
+              cout << "t= " << t << endl;
+              next_s = 0.0;
+              for (int a = 0; a < poly.size(); ++a) {
+                next_s += poly[a] * pow(t, a);
               }
 
+              mod_s = fmod(next_s, TRACK_DISTANCE);
+
+              //@TODO
+              // spline interpolation
+              wp_x = wp_spline_x(mod_s);
+              wp_y = wp_spline_y(mod_s);
+              wp_dx = wp_spline_dx(mod_s);
+              wp_dy = wp_spline_dy(mod_s);
+
+              next_x = roundf((wp_x + wp_dx * 6.0)*100) / 100;
+              next_y = roundf((wp_y + wp_dy * 6.0)*100) / 100;
+
+              next_x_vals.push_back(next_x);
+              next_y_vals.push_back(next_y);
             }
-            /* Road Check */
-            // cout << road.left_lane.size() <<  " ";
-            // cout << road.center_lane.size() <<  " ";
-            // cout << road.right_lane.size() <<  " ";
+          }
 
-            /* FROM UDACITY DOCS:
-            Previous path
-            Previous path data given to the Planner
-            //Note: Return the previous list but with processed points removed, can be a nice tool to show how far along the path has processed since last time.
-            ["previous_path_x"] The previous list of x points previously given to the simulator
-            ["previous_path_y"] The previous list of y points previously given to the simulator
-
-            Previous path's end s and d values
-            ["end_path_s"] The previous list's last point's frenet s value
-            ["end_path_d"] The previous list's last point's frenet d value
-
-            Using Previous Path Points
-            We still use 50 points as in our last experiment, but first we add the previous path points that we used during the last cycle.
-            Then we add new points in reference to the previous path until we have 50 points. Using information from the previous path can help
-            ensure that there is a smooth transition from cycle to cycle but the longer the previous path the less consideration the car is taking
-            for dynamic changes in its environment. Ideally maybe only a small starting portion of the previous path should be used and the rest of
-            the path is then generated based on new data from the car's sensor fusion information. */
+          // New path
+          if (n < MIN_PATH_POINTS) {
 
             /*****************
             ******DRIVE*******
             *****************/
 
-            double pos_x;
-            double pos_y;
-            double pos_s;
-            double pos_d;
-            double angle;
+            //@TODO ACCELERATION (vNow-vPrevios/AT*NUMPOINTSCONSUMED)
 
-            int path_size = previous_path_x.size();
+            // get target states based on behavior s component
+            cout << "a" << endl;
+            double target_s = car.prev_s()[0] + AT*CYCLES*POINTS * car.prev_s()[1];
+            double target_v = car.prev_s()[1];
+            cout << "a" << endl;
 
-            for(int i = 0; i < path_size; i++) {
-              next_x_vals.push_back(previous_path_x[i]);
-              next_y_vals.push_back(previous_path_y[i]);
-            }
+            vector<double> start = {car.prev_s()[0], car.prev_s()[1], 0.0};
+            vector<double> end = {target_s, target_v, 0.0};
+            vector<double> poly = planner.JMT(start, end, AT*CYCLES*POINTS);
+            cout << "a" << endl;
 
-            // INIT
-            if(path_size == 0) {
-              pos_x = car_x;
-              pos_y = car_y;
-              pos_s = car_s;
-              pos_d = car_d;
-              angle = deg2rad(car_yaw);
-            }
-            else {
-              pos_x = previous_path_x[path_size-1];
-              pos_y = previous_path_y[path_size-1];
-              pos_s = end_path_s;
-              pos_d = end_path_d;
+            car.set_previous_s(end);
+            cout << "a" << endl;
 
-              double pos_x2 = previous_path_x[path_size-2];
-              double pos_y2 = previous_path_y[path_size-2];
-              angle = atan2(pos_y-pos_y2,pos_x-pos_x2);
-            }
+            double t, next_s, mod_s, wp_x, wp_y, wp_dx, wp_dy, next_x, next_y;
+            for(int i = 0; i < CYCLES*POINTS; i++) {
 
-            int next_waypoint = NextWaypoint(car_x, car_y, car_yaw, map_waypoints_x, map_waypoints_y);
-            vector<double> start;
-            vector<double> end;
-            vector<double> trajectory;
+              /* JMT */
+              cout << "----------JMT----------" << endl;
+              t = AT*i;
+              cout << "t= " << t << endl;
+              next_s = 0.0;
+              for (int a = 0; a < poly.size(); ++a) {
+                next_s += poly[a] * pow(t, a);
+              }
 
-            double wp_x, wp_y, wp_dx, wp_dy;
-            for(int i = 0; i < 50-path_size; i++) {
+              mod_s = fmod(next_s, TRACK_DISTANCE);
 
-              /* TESTING LINE */
-              // pos_x += (dist_inc)*cos(angle);
-              // pos_y += (dist_inc)*sin(angle);
-              // next_x_vals.push_back(pos_x);
-              // next_y_vals.push_back(pos_y);
-
-              /* TESTING CIRCLE */
-              // pos_x += (dist_inc)*cos(angle+(i+1)*(pi()/100));
-              // pos_y += (dist_inc)*sin(angle+(i+1)*(pi()/100));
-              // next_x_vals.push_back(pos_x);
-              // next_y_vals.push_back(pos_y);
-
-              /* SAME LANE */
-              pos_s += pathPlanner.s_inc;
-
-              // start = {car_s, car_speed, 0};
-              // end = {pos_s + pathPlanner.s_inc, car_speed, 0};
-              //
-              // trajectory = pathPlanner.JMT(start, end, 0.020);
-              // double next_s = car_s;
-              // for (int a = 0; a < trajectory.size(); ++a) {
-              //   pos_s += pow(trajectory[a], a) * (0.1 * i);
-              // }
-
+              //@TODO
               // spline interpolation
-              wp_x = wp_spline_x(pos_s);
-              wp_y = wp_spline_y(pos_s);
-              wp_dx = wp_spline_dx(pos_s);
-              wp_dy = wp_spline_dy(pos_s);
+              wp_x = wp_spline_x(mod_s);
+              wp_y = wp_spline_y(mod_s);
+              wp_dx = wp_spline_dx(mod_s);
+              wp_dy = wp_spline_dy(mod_s);
 
-              pos_x = wp_x + wp_dx * pathPlanner.d;
-              pos_y = wp_y + wp_dy * pathPlanner.d;
+              next_x = roundf((wp_x + wp_dx * 6.0)*100) / 100;
+              next_y = roundf((wp_y + wp_dy * 6.0)*100) / 100;
 
-              next_x_vals.push_back(pos_x);
-              next_y_vals.push_back(pos_y);
-
+              next_x_vals.push_back(next_x);
+              next_y_vals.push_back(next_y);
             }
+          }
 
-            // Update next point
-            msgJson["next_x"] = next_x_vals;
-            msgJson["next_y"] = next_y_vals;
+          // Update next point
+          msgJson["next_x"] = next_x_vals;
+          msgJson["next_y"] = next_y_vals;
 
-            auto msg = "42[\"control\","+ msgJson.dump()+"]";
+          cout << "\n" << endl;
 
-            //this_thread::sleep_for(chrono::milliseconds(1000));
-            ws.send(msg.data(), msg.length(), uWS::OpCode::TEXT);
+          auto msg = "42[\"control\","+ msgJson.dump()+"]";
+
+          //this_thread::sleep_for(chrono::milliseconds(1000));
+          ws.send(msg.data(), msg.length(), uWS::OpCode::TEXT);
 
         }
       } else {
