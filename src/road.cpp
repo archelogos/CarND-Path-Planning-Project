@@ -8,7 +8,7 @@ void Road::update_road(vector<Vehicle> left_lane, vector<Vehicle> center_lane, v
   this->right_lane = right_lane;
 }
 
-vector<Vehicle> Road::get_lane(LANE lane){
+vector<Vehicle> Road::get_lane_status(LANE lane){
   vector<Vehicle> r_lane;
   if (lane == LANE::LEFT) {
     r_lane = this->left_lane;

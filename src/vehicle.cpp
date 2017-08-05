@@ -5,6 +5,7 @@ using namespace std;
 Vehicle::Vehicle(){
   this->id = -1;
   this->stopped = true;
+  this->state = STATE::KEEP_LANE;
 }
 
 Vehicle::Vehicle(int id, double x, double y, double v, double s, double d){
@@ -39,6 +40,10 @@ double Vehicle::get_s(){
 
 double Vehicle::get_d(){
   return this->d;
+}
+
+STATE Vehicle::get_state(){
+  return this->state;
 }
 
 LANE Vehicle::lane(){
@@ -86,4 +91,8 @@ vector<double> Vehicle::prev_s(){
 
 vector<double> Vehicle::prev_d(){
   return this->previous_d;
+}
+
+void Vehicle::set_state(STATE state){
+  this->state = state;
 }

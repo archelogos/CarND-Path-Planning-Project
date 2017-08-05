@@ -22,4 +22,6 @@ const int MIN_PATH_POINTS = 100;
 /* LANE */
 enum class LANE { LEFT, CENTER, RIGHT };
 
+enum class STATE { KEEP_LANE, CHANGE_LEFT, CHANGE_RIGHT };
+
 #endif // UTILS_H

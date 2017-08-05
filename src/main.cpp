@@ -9,13 +9,12 @@
 
 #include "json.hpp"
 
-#include "spline.h"
+#include "map.h"
 #include "vehicle.h"
 #include "road.h"
 #include "planner.h"
 
 using namespace std;
-using namespace tk; // spline
 
 // for convenience
 using json = nlohmann::json;
@@ -40,70 +39,24 @@ string hasData(string s) {
 int main() {
   uWS::Hub h;
 
-  // Load up map values for waypoint's x,y,s and d normalized normal vectors
-  vector<double> map_waypoints_x;
-  vector<double> map_waypoints_y;
-  vector<double> map_waypoints_s;
-  vector<double> map_waypoints_dx;
-  vector<double> map_waypoints_dy;
-
-  // Waypoint map to read from
+  //map file
   string map_file_ = "../data/highway_map.csv";
-
-  ifstream in_map_(map_file_.c_str(), ifstream::in);
-
-  string line;
-  while (getline(in_map_, line)) {
-    istringstream iss(line);
-    double x;
-    double y;
-    float s;
-    float d_x;
-    float d_y;
-    iss >> x;
-    iss >> y;
-    iss >> s;
-    iss >> d_x;
-    iss >> d_y;
-    map_waypoints_x.push_back(x);
-    map_waypoints_y.push_back(y);
-    map_waypoints_s.push_back(s);
-    map_waypoints_dx.push_back(d_x);
-    map_waypoints_dy.push_back(d_y);
-  }
-
-  // define wp spline trajectory
-  spline wp_spline_x;
-  spline wp_spline_y;
-  spline wp_spline_dx;
-  spline wp_spline_dy;
-
-  // set points
-  wp_spline_x.set_points(map_waypoints_s, map_waypoints_x);
-  wp_spline_y.set_points(map_waypoints_s, map_waypoints_y);
-  wp_spline_dx.set_points(map_waypoints_s, map_waypoints_dx);
-  wp_spline_dy.set_points(map_waypoints_s, map_waypoints_dy);
-
 
   // The max s value before wrapping around the track back to 0
   int event_counter = 0;
-  double max_s = 6945.554;
 
-  // Road & Vehicle & Planner instances
+  // Map && Road & Vehicle & Planner instances
+  Map map (map_file_);
   Road road;
   Vehicle car;
   Planner planner;
 
   h.onMessage([
+    &map,
     &road,
     &car,
     &planner,
-    &wp_spline_x,
-    &wp_spline_y,
-    &wp_spline_dx,
-    &wp_spline_dy,
-    &event_counter](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
-                     uWS::OpCode opCode) {
+    &event_counter](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length, uWS::OpCode opCode) {
     // "42" at the start of the message means there's a websocket message event.
     // The 4 signifies a websocket message
     // The 2 signifies a websocket event
@@ -205,99 +158,21 @@ int main() {
             next_y_vals.push_back(previous_path_y[i]);
           }
 
-          if (car.is_stopped()) {
-            // block
-            car.lock_start();
-
-            n = 50*4.5; // 0 to max speed? 50*5?
-            double T = n * AT;
-            double target_s = car.get_s() + 40.0;
-            double target_v = SPEED_LIMIT;
-
-            vector<double> start = {car.get_s(), car.get_v(), 0.0};
-            vector<double> end = {target_s, target_v, 0.0};
-            vector<double> poly = planner.JMT(start, end, T);
-
-            car.set_previous_s(end);
-
-            double t, next_s, mod_s, wp_x, wp_y, wp_dx, wp_dy, next_x, next_y;
-            for(int i = 0; i < n; i++) {
-
-              /* JMT */
-              cout << "----------JMT----------" << endl;
-              t = AT*i;
-              cout << "t= " << t << endl;
-              next_s = 0.0;
-              for (int a = 0; a < poly.size(); ++a) {
-                next_s += poly[a] * pow(t, a);
-              }
-
-              mod_s = fmod(next_s, TRACK_DISTANCE);
-
-              //@TODO
-              // spline interpolation
-              wp_x = wp_spline_x(mod_s);
-              wp_y = wp_spline_y(mod_s);
-              wp_dx = wp_spline_dx(mod_s);
-              wp_dy = wp_spline_dy(mod_s);
-
-              next_x = roundf((wp_x + wp_dx * 6.0)*100) / 100;
-              next_y = roundf((wp_y + wp_dy * 6.0)*100) / 100;
-
-              next_x_vals.push_back(next_x);
-              next_y_vals.push_back(next_y);
-            }
-          }
-
           // New path
           if (n < MIN_PATH_POINTS) {
 
             /*****************
             ******DRIVE*******
             *****************/
-
             //@TODO ACCELERATION (vNow-vPrevios/AT*NUMPOINTSCONSUMED)
-
             // get target states based on behavior s component
-            cout << "a" << endl;
-            double target_s = car.prev_s()[0] + AT*CYCLES*POINTS * car.prev_s()[1];
-            double target_v = car.prev_s()[1];
-            cout << "a" << endl;
 
-            vector<double> start = {car.prev_s()[0], car.prev_s()[1], 0.0};
-            vector<double> end = {target_s, target_v, 0.0};
-            vector<double> poly = planner.JMT(start, end, AT*CYCLES*POINTS);
-            cout << "a" << endl;
+            vector<vector<double>> new_points;
+            planner.create_trajectory(map, car, new_points);
 
-            car.set_previous_s(end);
-            cout << "a" << endl;
-
-            double t, next_s, mod_s, wp_x, wp_y, wp_dx, wp_dy, next_x, next_y;
-            for(int i = 0; i < CYCLES*POINTS; i++) {
-
-              /* JMT */
-              cout << "----------JMT----------" << endl;
-              t = AT*i;
-              cout << "t= " << t << endl;
-              next_s = 0.0;
-              for (int a = 0; a < poly.size(); ++a) {
-                next_s += poly[a] * pow(t, a);
-              }
-
-              mod_s = fmod(next_s, TRACK_DISTANCE);
-
-              //@TODO
-              // spline interpolation
-              wp_x = wp_spline_x(mod_s);
-              wp_y = wp_spline_y(mod_s);
-              wp_dx = wp_spline_dx(mod_s);
-              wp_dy = wp_spline_dy(mod_s);
-
-              next_x = roundf((wp_x + wp_dx * 6.0)*100) / 100;
-              next_y = roundf((wp_y + wp_dy * 6.0)*100) / 100;
-
-              next_x_vals.push_back(next_x);
-              next_y_vals.push_back(next_y);
+            for(int i = 0; i < new_points[0].size(); i++) {
+              next_x_vals.push_back(new_points[0][i]);
+              next_y_vals.push_back(new_points[1][i]);
             }
           }
 
