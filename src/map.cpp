@@ -41,17 +41,17 @@ Map::Map(string map_file_) {
 
 }
 
-vector<double> Map::getXY(double mod_s){
+vector<double> Map::getXY(double s, double d){
   double wp_x, wp_y, wp_dx, wp_dy, next_x, next_y;
 
   // spline interpolation
-  wp_x = this->wp_spline_x(mod_s);
-  wp_y = this->wp_spline_y(mod_s);
-  wp_dx = this->wp_spline_dx(mod_s);
-  wp_dy = this->wp_spline_dy(mod_s);
+  wp_x = this->wp_spline_x(s);
+  wp_y = this->wp_spline_y(s);
+  wp_dx = this->wp_spline_dx(s);
+  wp_dy = this->wp_spline_dy(s);
 
-  next_x = roundf((wp_x + wp_dx * 6.0)*100) / 100;
-  next_y = roundf((wp_y + wp_dy * 6.0)*100) / 100;
+  next_x = roundf((wp_x + wp_dx * d)*100) / 100;
+  next_y = roundf((wp_y + wp_dy * d)*100) / 100;
 
   return {next_x, next_y};
 }

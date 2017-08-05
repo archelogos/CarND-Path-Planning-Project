@@ -74,6 +74,7 @@ int main() {
         if (event == "telemetry") {
           // j[1] is the data JSON object
           event_counter++;
+          cout << "-------------------------------" << endl;
           cout << "EVENT: " << event_counter << endl;
 
           // Main car's localization Data
@@ -106,11 +107,7 @@ int main() {
           cout << "-------------CAR--------------" << endl;
           cout << "Car S: " << car_s << " " << "Car speed: " << car_speed << endl;
 
-          car.update_vehicle_state(car_x, car_y, car_speed, car_s, car_d, car_yaw);
-
-          /* Step One: "Lane detection" -> Where am I? */
-          LANE lane = car.lane();
-          // cout << "Car Lane: " << lane << endl;
+          car.update_vehicle_values(car_x, car_y, car_speed, car_s, car_d, car_yaw);
 
           vector<Vehicle> left_lane;
           vector<Vehicle> center_lane;
@@ -152,35 +149,24 @@ int main() {
 
           // Previous path
           int n = previous_path_x.size();
-          cout << n << endl;
           for(int i = 0; i < n; i++) {
             next_x_vals.push_back(previous_path_x[i]);
             next_y_vals.push_back(previous_path_y[i]);
           }
 
           // New path
-          if (n < MIN_PATH_POINTS) {
+          /*****************
+          ******DRIVE*******
+          *****************/
+          //@TODO ACCELERATION (vNow-vPrevios/AT*NUMPOINTSCONSUMED)
+          // get target states based on behavior s component
 
-            /*****************
-            ******DRIVE*******
-            *****************/
-            //@TODO ACCELERATION (vNow-vPrevios/AT*NUMPOINTSCONSUMED)
-            // get target states based on behavior s component
-
-            vector<vector<double>> new_points;
-            planner.create_trajectory(map, car, new_points);
-
-            for(int i = 0; i < new_points[0].size(); i++) {
-              next_x_vals.push_back(new_points[0][i]);
-              next_y_vals.push_back(new_points[1][i]);
-            }
-          }
+          vector<vector<double>> trajectory = {next_x_vals, next_y_vals};
+          planner.create_trajectory(map, road, car, trajectory);
 
           // Update next point
-          msgJson["next_x"] = next_x_vals;
-          msgJson["next_y"] = next_y_vals;
-
-          cout << "\n" << endl;
+          msgJson["next_x"] = trajectory[0];
+          msgJson["next_y"] = trajectory[1];
 
           auto msg = "42[\"control\","+ msgJson.dump()+"]";
 

@@ -25,8 +25,6 @@ class Vehicle {
     double s;
     double d;
     double yaw;
-    bool stopped;
-    STATE state;
 
     vector<double> previous_s;
     vector<double> previous_d;
@@ -44,17 +42,13 @@ class Vehicle {
     double get_s();
     double get_d();
     double get_yaw();
-    STATE get_state();
     LANE lane();
 
-    void update_vehicle_state(double x, double y, double v, double s, double d, double yaw);
-    bool is_stopped();
-    void lock_start();
+    void update_vehicle_values(double x, double y, double v, double s, double d, double yaw);
     void set_previous_s(vector<double> previous_s);
     void set_previous_d(vector<double> previous_d);
     vector<double> prev_s();
     vector<double> prev_d();
-    void set_state(STATE state);
 
 };
 

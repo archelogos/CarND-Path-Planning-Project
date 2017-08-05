@@ -27,7 +27,7 @@ class Map {
     Map(string map_file_);
     ~Map() {};
 
-    vector<double> getXY(double mod_s);
+    vector<double> getXY(double s, double d);
 
 };
 
