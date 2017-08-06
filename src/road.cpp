@@ -37,7 +37,7 @@ bool Road::free_lane(Vehicle& car, LANE lane){
   bool is_free = true;
   for (int i = 0; i < target_lane.size(); i++) {
     double distance = std::abs(target_lane[i].get_s() - car.get_s());
-    if(distance < SAFETY_DISTANCE){
+    if(distance < GUARD_DISTANCE){
       is_free = false;
     }
   }
@@ -49,11 +49,11 @@ LANE Road::lane_change_available(Vehicle& car){
   LANE target_lane = car_lane;
 
   if (car_lane == LANE::LEFT || car_lane == LANE::RIGHT) {
-    if(this->free_lane(car, LANE::CENTER)){
+    if (this->free_lane(car, LANE::CENTER)) {
       target_lane = LANE::CENTER;
     }
   } else {
-    if(this->free_lane(car, LANE::LEFT)){
+    if (this->free_lane(car, LANE::LEFT)) {
       target_lane = LANE::LEFT;
     } else if (this->free_lane(car, LANE::RIGHT)) {
       target_lane = LANE::RIGHT;

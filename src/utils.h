@@ -17,8 +17,8 @@ const double SPEED_LIMIT = 20.0;
 const double AT = 0.02; //s
 const double CYCLES = 2;
 const double POINTS = 50; //points per each s
-const int MIN_PATH_POINTS = 50;
 const double SAFETY_DISTANCE = 40.0;
+const double GUARD_DISTANCE = 20.0;
 
 /* LANE */
 enum class LANE { LEFT, CENTER, RIGHT };
