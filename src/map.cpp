@@ -50,8 +50,8 @@ vector<double> Map::getXY(double s, double d){
   wp_dx = this->wp_spline_dx(s);
   wp_dy = this->wp_spline_dy(s);
 
-  next_x = roundf((wp_x + wp_dx * d)*100) / 100;
-  next_y = roundf((wp_y + wp_dy * d)*100) / 100;
+  next_x = wp_x + wp_dx * d;
+  next_y = wp_y + wp_dy * d;
 
   return {next_x, next_y};
 }

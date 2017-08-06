@@ -11,7 +11,6 @@
 
 using namespace std;
 
-// @TODO
 const double TRACK_DISTANCE = 6945.554;
 const double ROAD_WIDTH = 12.0;
 const double SPEED_LIMIT = 20.0;

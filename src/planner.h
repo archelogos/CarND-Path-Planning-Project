@@ -37,7 +37,7 @@ public:
   /*  Actions */
   void apply_action(Vehicle& car, LANE current_lane, LANE target_lane);
   void start_car(Vehicle& car);
-  void stay_on_lane(Vehicle& car);
+  void stay_in_lane(Vehicle& car);
   void reduce_speed(Vehicle& car);
   void change_lane(Vehicle& car, LANE target_lane);
 
