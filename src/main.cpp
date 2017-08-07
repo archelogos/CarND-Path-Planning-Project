@@ -42,10 +42,9 @@ int main() {
   //map file
   string map_file_ = "../data/highway_map.csv";
 
-  // The max s value before wrapping around the track back to 0
   int event_counter = 0;
 
-  // Map && Road & Vehicle & Planner instances
+  // Map & Road & Vehicle & Planner instances
   Map map (map_file_);
   Road road;
   Vehicle car;
@@ -113,9 +112,9 @@ int main() {
           vector<Vehicle> center_lane;
           vector<Vehicle> right_lane;
 
-          /* Step Two: Get SF info to create the Road -> Sensor Fusion Elements (Just cars) */
+          /* Get SF info to create the Road -> Sensor Fusion Elements (Just cars) */
           for (int i = 0; i < sensor_fusion.size(); ++i) {
-            // It's called vehicle instead of car just to do not get wrong with our car variables.
+
             int id = sensor_fusion[i][0];
             double x = sensor_fusion[i][1];
             double y = sensor_fusion[i][2];
@@ -136,12 +135,9 @@ int main() {
               right_lane.push_back(vehicle);
             }
           }
+
           // Update road
           road.update_road(left_lane, center_lane, right_lane);
-
-          /* Road Check */
-          //cout << "---------------ROAD---------------" << endl;
-          //cout << "Left: " << road.get_lane(LEFT).size() << " " << "Center: " << road.get_lane(CENTER).size() << " " << "Right: " << road.get_lane(CENTER).size() << endl;
 
           /*****************
           ******CORE*****
@@ -154,13 +150,9 @@ int main() {
             next_y_vals.push_back(previous_path_y[i]);
           }
 
-          // New path
           /*****************
           ******DRIVE*******
           *****************/
-          //@TODO ACCELERATION (vNow-vPrevios/AT*NUMPOINTSCONSUMED)
-          // get target states based on behavior s component
-
           vector<vector<double>> trajectory = {next_x_vals, next_y_vals};
           planner.create_trajectory(map, road, car, trajectory);
 

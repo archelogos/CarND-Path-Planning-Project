@@ -1,20 +1,54 @@
 # CarND-Path-Planning-Project
 Self-Driving Car Engineer Nanodegree Program
 
-## SUMMARY
+---
 
+## Path Planning
 
+The goal of this project is to build a path planner that creates smooth and safe trajectories for the car to follow. To achieve this goal it's been developed a complete and optimal trajectory planner which implements a Finite State Machine and makes decisions based on sensor fusion and localization data. The planner has to produce feasible, safe and legal trajectories which do not provoke any kind of penalties.
 
+![Image](./image.jpg)
 
+### Vehicle
 
+This class is used to represent our self-driving car and others cars along the road. It implements two different constructors. The first one does not need any parameters to be passed when creating the instance and it's used to model our Self Driving Car. The second constructor accepts the localization data of the car and we call this method to create instances which represent the other cars in the road.
 
+Our Self-Driving Car vehicle instance is updated every time the program receives a telemetry event from the simulator. The later explained path planner algorithm will use this information, combined with other cars data to estimate optimal trajectories for the car to follow.
 
+### Road
 
+The Road class instance stores the updated sensor fusion data and also implements some methods that help the planner to decide if a way is safe or/and free to drive in. The road instance has three protected properties which are vectors of Vehicles and they have information about the traffic on each way of the road.
 
+### Map
 
+Thanks to the spline.h script our map is based on interpolate points taken from the highway_map dataset. It allows us not to transform from Frenet to Cartesian coordinates at any time we need to send new points to the Motion Control. Instead of that, we just need to use the spline functions to get the Cartesian coordinates for our estimated Frenet points.
 
+### Planner
 
-## UDACITY INSTRUCTIONS
+This version of the planner is based on a pretty simple design. It models a four state FSM (START, KEEP_LANE, CHANGE_LEFT, and CHANGE_RIGHT). The START state is the initial one and the machine cannot come back to it at any time. Once the car has started, the standard and desired behavior is to stay in the same lane at maximum allowed speed.
+
+In case there is another car on his trajectory it will try to change lanes. If the car's initial position is in the left lane, the car only will change lane to the right. The opposite applies when the car needs to change and it is driving in the right lane.
+
+If the car finds itself in the center of the highway, it will try first, to change to the left lane. If that's not possible and the right lane is safe and free to move in, the movement will be to that lane.
+
+Mentioned this, if at any time it cannot change lanes because it's not safe or the just because the way is not free, it will reduce the speed to the minimum of half of max speed to not collide with other cars.
+
+All maneuvers (except when the car is started) are done in just two planner cycles, this is, 2 seconds.
+
+These 4 states are driven by 4 actions (start_car, stay_on_lane, reduce_speed, change_lane).
+
+The planner also implements a JMT (Jerk Minimizing Trajectory) generator in order to create and drive smooth and safe paths when the car needs to change lanes or just to stay in the same lane without spikes on the acceleration nor jerk values.
+
+### Recap
+
+The SD Car is completely able to complete a track lap driving at max speed when it is possible and avoiding at any value, any kind of collisions or unsafe maneuvers. There are some straightforward challenges to the future like creating a complete behavior planner based on classification algorithms which take into account the others car most likely future maneuvers and projected trajectories.
+
+### Links
+- [VIDEO](https://youtu.be/8PZLi5K1thE)
+
+---
+
+# UDACITY INSTRUCTIONS
 
 ### Simulator. You can download the Term3 Simulator BETA which contains the Path Planning Project from the [releases tab](https://github.com/udacity/self-driving-car-sim/releases).
 
